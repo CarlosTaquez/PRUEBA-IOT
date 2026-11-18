@@ -1,12 +1,28 @@
-# Plataforma de mantenimiento predictivo IoT — base inicial
+# Plataforma de mantenimiento predictivo IoT
 
-**Estado:** estructura inicial, no implementación completa. Los ocho proyectos Java compilan por separado, pero aún no contienen lógica de negocio. El Compose inicial levanta **solo Kafka y RabbitMQ**.
+El simulador genera lecturas de sensores. Los servicios Spring Boot procesan los eventos con Kafka y RabbitMQ, y el dashboard muestra las lecturas, las alertas y el historial de PostgreSQL.
+
+## Ejecutar el proyecto completo
+
+Con Docker Desktop en ejecución, desde la raíz del repositorio:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml -f docker-compose.services.yml up -d --build
+python -m http.server 8000 --bind 127.0.0.1 --directory dashboard
+```
+
+Si ya tienes un `.env`, verifica que incluya las variables `POSTGRES_*` de `.env.example`. Abre [el dashboard local](http://localhost:8000/). Compose inicia los nueve servicios, inicializa los topics de Kafka y carga el esquema al crear el volumen de PostgreSQL por primera vez.
+
+## Desplegar el dashboard en Vercel
+
+Importa el repositorio en Vercel y selecciona `dashboard` como **Root Directory**. Para conectarlo al backend remoto, configura las cuatro URLs en `dashboard/config.js` según [la guía del dashboard](dashboard/README.md).
 
 ## Requisitos
 - Docker Desktop con Docker Compose
 - Java 17 y Maven para ejecución local de microservicios
 
-## Arranque
+## Arranque de Kafka y RabbitMQ para desarrollo manual
 ```powershell
 Copy-Item .env.example .env
 docker compose up -d

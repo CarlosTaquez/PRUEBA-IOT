@@ -2,6 +2,7 @@ package com.example.iot.actuatorworker;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.amqp.rabbit.annotation.Queue;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
@@ -14,7 +15,7 @@ public class ActuatorDecisionConsumer {
         this.objectMapper = objectMapper;
     }
 
-    @RabbitListener(queues = "actuator_actions_queue")
+    @RabbitListener(queuesToDeclare = @Queue(value = "actuator_actions_queue", durable = "true"))
     public void receiveDecision(String message) throws Exception {
 
         JsonNode decision = objectMapper.readTree(message);

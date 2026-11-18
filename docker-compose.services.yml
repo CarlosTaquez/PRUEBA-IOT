@@ -1,0 +1,115 @@
+x-kafka-env: &kafka-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+
+x-rabbit-env: &rabbit-env
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_USER: ${RABBITMQ_USER}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+
+x-kafka-ready: &kafka-ready
+  kafka-init:
+    condition: service_completed_successfully
+
+x-rabbit-ready: &rabbit-ready
+  rabbitmq:
+    condition: service_healthy
+
+services:
+  kafka:
+    ports: !override ['127.0.0.1:9092:9092']
+    healthcheck:
+      test: [CMD, /opt/kafka/bin/kafka-topics.sh, --bootstrap-server, 'kafka:19092', --list]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        for topic in sensor_data sensor_status alerts_critical alerts_warning; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic "$$topic" --partitions 3 --replication-factor 1
+        done
+
+  rabbitmq:
+    ports: !override ['127.0.0.1:5672:5672', '127.0.0.1:15672:15672']
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_running]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  postgres:
+    ports: !override ['127.0.0.1:5432:5432']
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  sensor_producer:
+    build: ./services/sensor_producer
+    environment: *kafka-env
+    depends_on: *kafka-ready
+
+  alert_detector:
+    build: ./services/alert_detector
+    environment: *kafka-env
+    depends_on: *kafka-ready
+
+  alert_router:
+    build: ./services/alert_router
+    environment:
+      <<: [*kafka-env, *rabbit-env]
+    depends_on:
+      <<: [*kafka-ready, *rabbit-ready]
+
+  plant_monitor_backend:
+    build: ./services/plant_monitor_backend
+    environment: *kafka-env
+    depends_on: *kafka-ready
+    ports: ['127.0.0.1:8081:8081']
+
+  operator_console_backend:
+    build: ./services/operator_console_backend
+    environment:
+      <<: [*kafka-env, *rabbit-env]
+    depends_on: *rabbit-ready
+    ports: ['127.0.0.1:8082:8082']
+
+  action_dispatcher:
+    build: ./services/action_dispatcher
+    environment:
+      <<: *rabbit-env
+      DASHBOARD_ORIGIN: ${DASHBOARD_ORIGIN:-}
+    depends_on: *rabbit-ready
+    ports: ['127.0.0.1:8083:8083']
+
+  actuator_worker:
+    build: ./services/actuator_worker
+    environment: *rabbit-env
+    depends_on: *rabbit-ready
+
+  maintenance_worker:
+    build: ./services/maintenance_worker
+    environment: *rabbit-env
+    depends_on: *rabbit-ready
+
+  history_service:
+    build: ./services/history_service
+    environment:
+      <<: *rabbit-env
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-iot_history}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      <<: [*kafka-ready, *rabbit-ready]
+      postgres:
+        condition: service_healthy
+    ports: ['127.0.0.1:8090:8090']

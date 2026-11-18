@@ -294,8 +294,43 @@
 
 </main>
 
+<script src="./config.js"></script>
 <script>
-    const HISTORY_API_BASE = "http://localhost:8090";
+    const isLocal = window.location.protocol === "file:" || (
+        window.location.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
+    );
+    const localEndpoints = {
+        historyApi: "http://localhost:8090",
+        decisionApi: "http://localhost:8083/decide",
+        plantSocket: "ws://localhost:8081/ws/plant",
+        operatorSocket: "ws://localhost:8082/ws/operator"
+    };
+    const config = window.iotDashboardConfig || {};
+
+    function backendUrl(name, secureProtocol) {
+        const configuredUrl = config[name]?.trim();
+        if (!configuredUrl) {
+            return isLocal ? localEndpoints[name] : null;
+        }
+
+        try {
+            const url = new URL(configuredUrl);
+            if (url.protocol === secureProtocol) {
+                return url.href;
+            }
+        } catch (error) {
+            console.error(`URL inválida para ${name}:`, error);
+            return null;
+        }
+        console.error(`La URL para ${name} debe usar ${secureProtocol}`);
+        return null;
+    }
+
+    const HISTORY_API_BASE = backendUrl("historyApi", "https:")?.replace(/\/+$/, "");
+    const DECISION_API_URL = backendUrl("decisionApi", "https:");
+    const PLANT_SOCKET_URL = backendUrl("plantSocket", "wss:");
+    const OPERATOR_SOCKET_URL = backendUrl("operatorSocket", "wss:");
     const displayedPlantAlertIds = new Set();
 
     const sensorGrid = document.getElementById("sensorGrid");
@@ -330,9 +365,7 @@
 
     function connectPlantMonitor() {
 
-        plantSocket = new WebSocket(
-            "ws://localhost:8081/ws/plant"
-        );
+        plantSocket = new WebSocket(PLANT_SOCKET_URL);
 
         plantSocket.onopen = () => {
             console.log("[WEBSOCKET] Conectado a plant_monitor_backend");
@@ -544,13 +577,10 @@
         document.getElementById("criticalSensors").textContent = critical;
     }
 
-    loadPersistentHistory();
-    connectPlantMonitor();
-
     let operatorSocket;
 
     function connectOperatorConsole() {
-        operatorSocket = new WebSocket("ws://localhost:8082/ws/operator");
+        operatorSocket = new WebSocket(OPERATOR_SOCKET_URL);
 
         operatorSocket.onopen = () => {
             console.log("[OPERADOR] Consola conectada");
@@ -638,6 +668,10 @@
 
             button.type = "button";
             button.textContent = actionLabels[action] || action;
+            if (!DECISION_API_URL) {
+                button.disabled = true;
+                button.title = "El servicio de decisiones aún no está configurado";
+            }
 
             button.addEventListener("click", () => {
                 sendOperatorDecision(alert, action, alertElement);
@@ -666,7 +700,7 @@
         });
 
         try {
-            const response = await fetch("http://localhost:8083/decide", {
+            const response = await fetch(DECISION_API_URL, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -758,7 +792,17 @@
         }
     }
 
-    connectOperatorConsole();
+    if (HISTORY_API_BASE) {
+        loadPersistentHistory();
+    }
+    if (PLANT_SOCKET_URL) {
+        connectPlantMonitor();
+    } else {
+        connectionStatus.textContent = "Conexión a la planta sin configurar";
+    }
+    if (OPERATOR_SOCKET_URL) {
+        connectOperatorConsole();
+    }
 </script>
 
 </body>

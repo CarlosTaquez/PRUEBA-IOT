@@ -1,5 +1,8 @@
 package com.example.iot.operatorconsolebackend;
 
+import org.springframework.amqp.rabbit.annotation.Exchange;
+import org.springframework.amqp.rabbit.annotation.Queue;
+import org.springframework.amqp.rabbit.annotation.QueueBinding;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +20,9 @@ public class RabbitMQAlertListener {
         this.pendingAlertStore = pendingAlertStore;
     }
 
-    @RabbitListener(queues = "operator_alerts_queue")
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(value = "operator_alerts_queue", durable = "true"),
+            exchange = @Exchange(value = "human_alerts", type = "fanout", durable = "true")))
     public void receiveAlert(String message) {
 
         System.out.println(
